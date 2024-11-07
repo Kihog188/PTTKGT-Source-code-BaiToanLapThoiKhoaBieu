@@ -1,0 +1,9 @@
+pulp>=2.7.0  
+#Cài IDLE Python 
+#Dùng terminal chạy lệnh sau: pip install pulp
+
+DỮ LIỆU THỬ 
+-CẢ 4 THUẬT TOÁN CHẠY 
+CLASS 3, ROOMS 2, TIMESLOTS 3, Teacher 1, Subject 1
+-Brute force ko thể chạy do dữ liệu lớn 
+CLASS 7, ROOMS 3, TIMESLOTS 5, Teacher 5, Subject 5

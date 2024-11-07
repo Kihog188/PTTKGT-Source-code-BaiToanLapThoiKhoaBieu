@@ -1,0 +1,211 @@
+import random
+import time
+from itertools import permutations
+from pulp import LpProblem, LpVariable, LpMinimize, LpStatus
+
+# Define global variables
+classes = []
+rooms = []
+timeslots = []
+teachers = []
+subjects = []
+days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+# Function to get user input
+def get_input():
+    global classes, rooms, timeslots, teachers, subjects
+    num_classes = int(input("Enter number of classes: "))
+    num_rooms = int(input("Enter number of rooms: "))
+    num_timeslots = int(input("Enter number of timeslots per day: "))
+    num_teachers = int(input("Enter number of teachers: "))
+    num_subjects = int(input("Enter number of subjects: "))
+    
+    classes = [f"Class_{i+1}" for i in range(num_classes)]
+    rooms = [f"Room_{i+1}" for i in range(num_rooms)]
+    timeslots = [f"Slot_{i+1}" for i in range(num_timeslots)]
+    teachers = [f"Teacher_{i+1}" for i in range(num_teachers)]
+    subjects = []
+    
+    for i in range(num_subjects):
+        subject = input(f"Enter name of subject {i+1}: ")
+        teacher = input(f"Enter teacher for {subject}: ")
+        subjects.append((subject, teacher))
+
+# Brute Force Algorithm
+def brute_force():
+    print("Running Brute Force...")
+    start_time = time.time()
+    for perm in permutations(timeslots, len(classes)):
+        schedule = {cls: (random.choice(days), slot, random.choice(rooms), random.choice(subjects)) for cls, slot in zip(classes, perm)}
+        if check_constraints(schedule):
+            end_time = time.time()
+            print_schedule(schedule)
+            print("Time taken:", end_time - start_time, "seconds")
+            return
+    print("No valid schedule found.")
+
+def check_constraints(schedule):
+    used_slots = {}
+    for cls, (day, slot, room, (subject, teacher)) in schedule.items():
+        if (day, slot, room) in used_slots:
+            return False
+        used_slots[(day, slot, room)] = cls
+    return True
+
+# Greedy Algorithm
+def greedy():
+    print("Running Greedy Algorithm...")
+    start_time = time.time()
+    schedule = {}
+    for cls in classes:
+        assigned = False
+        for day in days:
+            for slot in timeslots:
+                room = random.choice(rooms)
+                subject = random.choice(subjects)
+                if is_valid(cls, day, slot, room, subject, schedule):
+                    schedule[cls] = (day, slot, room, subject)
+                    assigned = True
+                    break
+            if assigned:
+                break
+    end_time = time.time()
+    print_schedule(schedule)
+    print("Time taken:", end_time - start_time, "seconds")
+
+def is_valid(cls, day, slot, room, subject, schedule):
+    for _, (d, s, r, _) in schedule.items():
+        if d == day and s == slot and r == room:
+            return False
+    return True
+
+# Genetic Algorithm
+def genetic():
+    print("Running Genetic Algorithm...")
+    start_time = time.time()
+    population = [create_random_schedule() for _ in range(50)]
+    
+    for generation in range(100):
+        population.sort(key=fitness, reverse=True)
+        
+        if fitness(population[0]) == 1.0:
+            end_time = time.time()
+            print_schedule(population[0])
+            print("Time taken:", end_time - start_time, "seconds")
+            return
+        
+        next_generation = population[:10]
+
+        while len(next_generation) < len(population):
+            parent1, parent2 = selection(population), selection(population)
+            child1, child2 = crossover(parent1, parent2)
+            next_generation.append(mutate(child1))
+            if len(next_generation) < len(population):
+                next_generation.append(mutate(child2))
+        
+        population = next_generation
+    
+    print("No perfect solution found.")
+    print_schedule(population[0])
+
+def create_random_schedule():
+    return {cls: (random.choice(days), random.choice(timeslots), random.choice(rooms), random.choice(subjects)) for cls in classes}
+
+def fitness(schedule):
+    violations = 0
+    used_slots = {}
+
+    for cls, (day, slot, room, (subject, teacher)) in schedule.items():
+        if (day, slot, room) in used_slots:
+            violations += 1
+        used_slots[(day, slot, room)] = cls
+    
+    return 1 - (violations / (len(classes) * len(days) * len(timeslots)))
+
+def selection(population):
+    candidate1, candidate2 = random.sample(population, 2)
+    return candidate1 if fitness(candidate1) > fitness(candidate2) else candidate2
+
+def crossover(parent1, parent2):
+    point = random.randint(1, len(classes) - 1)
+    child1 = {**{cls: parent1[cls] for i, cls in enumerate(classes) if i < point},
+              **{cls: parent2[cls] for i, cls in enumerate(classes) if i >= point}}
+    child2 = {**{cls: parent2[cls] for i, cls in enumerate(classes) if i < point},
+              **{cls: parent1[cls] for i, cls in enumerate(classes) if i >= point}}
+    return child1, child2
+
+def mutate(schedule):
+    if random.random() < 0.1:
+        cls = random.choice(classes)
+        day, slot, room, subject = schedule[cls]
+        new_day, new_slot, new_room = day, slot, room
+        while (new_day, new_slot, new_room) in [(d, s, r) for _, (d, s, r, _) in schedule.items() if _ != cls]:
+            new_day = random.choice(days)
+            new_slot = random.choice(timeslots)
+            new_room = random.choice(rooms)
+        schedule[cls] = (new_day, new_slot, new_room, subject)
+    return schedule
+
+# Integer Linear Programming
+def integer_linear_programming():
+    print("Running Integer Linear Programming...")
+    start_time = time.time()
+    prob = LpProblem("Timetable Scheduling", LpMinimize)
+    
+    x = LpVariable.dicts("ClassSlot", (classes, days, timeslots, rooms), cat='Binary')
+    
+    prob += sum(x[cls][day][slot][room] for cls in classes for day in days for slot in timeslots for room in rooms)
+
+    for cls in classes:
+        prob += sum(x[cls][day][slot][room] for day in days for slot in timeslots for room in rooms) == 1
+
+    for day in days:
+        for slot in timeslots:
+            for room in rooms:
+                prob += sum(x[cls][day][slot][room] for cls in classes) <= 1
+
+    prob.solve()
+    
+    end_time = time.time()
+    schedule = {}
+    if LpStatus[prob.status] == 'Optimal':
+        for cls in classes:
+            for day in days:
+                for slot in timeslots:
+                    for room in rooms:
+                        if x[cls][day][slot][room].varValue:
+                            schedule[cls] = (day, slot, room, random.choice(subjects))
+    print_schedule(schedule)
+    print("Time taken:", end_time - start_time, "seconds")
+
+def print_schedule(schedule):
+    for cls, (day, slot, room, (subject, teacher)) in schedule.items():
+        print(f"{cls} is scheduled on {day} in {slot} in {room}, taught by {teacher} for {subject}")
+
+# Main function to choose and run algorithm
+def main():
+    get_input()
+    while True:
+        print("Choose an algorithm:")
+        print("1. Brute Force")
+        print("2. Greedy")
+        print("3. Genetic Algorithm")
+        print("4. Integer Linear Programming")
+        print("5. Exit")
+        choice = int(input("Enter choice (1-5): "))
+        
+        if choice == 1:
+            brute_force()
+        elif choice == 2:
+            greedy()
+        elif choice == 3:
+            genetic()
+        elif choice == 4:
+            integer_linear_programming()
+        elif choice == 5:
+            break
+        else:
+            print("Invalid choice!")
+
+if __name__ == "__main__":
+    main()
